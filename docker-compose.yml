@@ -1,0 +1,237 @@
+version: '3.8'
+
+services:
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper
+    container_name: db-stream-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - db-stream-network
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+
+  # Kafka for event streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka
+    container_name: db-stream-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    networks:
+      - db-stream-network
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  # ClickHouse for analytics
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    hostname: clickhouse
+    container_name: db-stream-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    networks:
+      - db-stream-network
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./scripts/clickhouse-init.sql:/docker-entrypoint-initdb.d/clickhouse-init.sql
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL for CDC source
+  postgres:
+    image: postgres:15-alpine
+    hostname: postgres
+    container_name: db-stream-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: db_stream_source
+      POSTGRES_USER: db_stream
+      POSTGRES_PASSWORD: db_stream_password
+    networks:
+      - db-stream-network
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/postgres-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U db_stream -d db_stream_source"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Debezium Connector for CDC
+  debezium:
+    image: debezium/connect:2.4
+    hostname: debezium
+    container_name: db-stream-debezium
+    depends_on:
+      - kafka
+      - postgres
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: debezium-connect-cluster
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      # Reduce memory usage to prevent OOM kills (Exit 137)
+      HEAP_OPTS: "-Xms512M -Xmx1G"
+    networks:
+      - db-stream-network
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    container_name: db-stream-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - db-stream-network
+    volumes:
+      - redis-data:/data
+
+  # MinIO for S3-compatible storage
+  minio:
+    image: minio/minio:latest
+    hostname: minio
+    container_name: db-stream-minio
+    ports:
+      - "9001:9001"
+      - "9002:9002"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9002"
+    networks:
+      - db-stream-network
+    volumes:
+      - minio-data:/data
+
+  # Spark Master for big data processing (TEMPORARILY DISABLED)
+  # spark-master:
+  #   image: bitnami/spark:3.4
+  #   hostname: spark-master
+  #   container_name: db-stream-spark-master
+  #   ports:
+  #     - "8080:8080"
+  #     - "7077:7077"
+  #   environment:
+  #     SPARK_MODE: master
+  #     SPARK_RPC_AUTHENTICATION_ENABLED: no
+  #     SPARK_RPC_ENCRYPTION_ENABLED: no
+  #     SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
+  #     SPARK_SSL_ENABLED: no
+  #   networks:
+  #     - db-stream-network
+  #   volumes:
+  #     - spark-data:/opt/bitnami/spark/data
+
+  # Spark Worker (TEMPORARILY DISABLED)
+  # spark-worker:
+  #   image: bitnami/spark:3.4
+  #   hostname: spark-worker
+  #   container_name: db-stream-spark-worker
+  #   depends_on:
+  #     - spark-master
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     SPARK_MODE: worker
+  #     SPARK_MASTER_URL: spark://spark-master:7077
+  #     SPARK_WORKER_MEMORY: 1G
+  #     SPARK_WORKER_CORES: 1
+  #     SPARK_RPC_AUTHENTICATION_ENABLED: no
+  #     SPARK_RPC_ENCRYPTION_ENABLED: no
+  #     SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: no
+  #     SPARK_SSL_ENABLED: no
+  #   networks:
+  #     - db-stream-network
+  #   volumes:
+  #     - spark-data:/opt/bitnami/spark/data
+
+  # Kafka UI for monitoring
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: db-stream-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8091:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: db-stream-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - db-stream-network
+    restart: unless-stopped
+
+  # Grafana for monitoring
+  grafana:
+    image: grafana/grafana:10.0.0
+    hostname: grafana
+    container_name: db-stream-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    networks:
+      - db-stream-network
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./configs/grafana:/etc/grafana/provisioning
+
+networks:
+  db-stream-network:
+    driver: bridge
+
+volumes:
+  zookeeper-data:
+    driver: local
+  zookeeper-logs:
+    driver: local
+  kafka-data:
+    driver: local
+  clickhouse-data:
+    driver: local
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  minio-data:
+    driver: local
+  # spark-data:
+  #   driver: local
+  grafana-data:
+    driver: local

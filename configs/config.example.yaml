@@ -1,0 +1,112 @@
+# Application Configuration
+service:
+  name: "db-stream"
+  version: "1.0.0"
+  environment: "development"
+
+# HTTP Server Configuration
+server:
+  port: "8080"
+  read_timeout: "30s"
+  write_timeout: "30s"
+  idle_timeout: "60s"
+
+# Kafka Configuration
+kafka:
+  brokers:
+    - "localhost:9092"
+  group_id: "db-stream-group"
+  topics:
+    cdc: "db-stream.cdc.events"
+    processed: "db-stream.processed.events"
+    dead_letter: "db-stream.dead-letter.events"
+  batch_size: 100
+  flush_frequency: "100ms"
+  compression_type: "gzip"
+  acks: "all"
+
+# Source Database Configuration (PostgreSQL)
+database:
+  host: "localhost"
+  port: 5432
+  user: "db_stream"
+  password: "db_stream_password"
+  database: "db_stream_source"
+  ssl_mode: "disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+
+# ClickHouse Configuration (Analytics)
+clickhouse:
+  host: "localhost"
+  port: 9000
+  database: "db_stream_analytics"
+  user: "default"
+  password: ""
+  max_open_conns: 10
+  max_idle_conns: 2
+
+# Redis Configuration (Caching)
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  database: 0
+
+# MinIO Configuration (Object Storage)
+minio:
+  endpoint: "localhost:9001"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  use_ssl: false
+  bucket: "db-stream-files"
+
+# Modules Configuration
+modules:
+  postgresql:
+    enabled: true
+    tables:
+      - "users"
+      - "products"
+      - "orders"
+  
+  mysql:
+    enabled: false
+    tables: []
+  
+  minio:
+    enabled: true
+    buckets:
+      - "db-stream-files"
+  
+  s3:
+    enabled: false
+    buckets: []
+    region: "us-east-1"
+  
+  api:
+    enabled: true
+    enabled_routes:
+      - "health"
+      - "events"
+      - "stats"
+  
+  processor:
+    enabled: true
+    batch_size: 100
+    flush_interval: "5s"
+
+# Spark Configuration (Big Data Processing)
+spark:
+  master_url: "spark://localhost:7077"
+  app_name: "db-stream-processor"
+  jars: []
+
+# Logging Configuration
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
+  max_size: 100
+  max_backups: 3
+  max_age: 28
