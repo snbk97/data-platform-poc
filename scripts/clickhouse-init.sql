@@ -14,14 +14,13 @@ CREATE TABLE IF NOT EXISTS user_events (
     event_type String,
     table_name String,
     operation String,
-    timestamp DateTime64(3) DEFAULT now64(),
+    event_time DateTime64(3) DEFAULT now64(),
     data String,
-    old_data String,
-    event_time DateTime64(3) MATERIALIZED timestamp
+    old_data String
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(event_time)
 ORDER BY (user_id, event_time, event_type)
-TTL event_time + INTERVAL 30 DAY
+TTL event_time + INTERVAL 30 DAY;
 
 -- Create table for product analytics
 CREATE TABLE IF NOT EXISTS product_events (
@@ -33,14 +32,13 @@ CREATE TABLE IF NOT EXISTS product_events (
     event_type String,
     table_name String,
     operation String,
-    timestamp DateTime64(3) DEFAULT now64(),
+    event_time DateTime64(3) DEFAULT now64(),
     data String,
-    old_data String,
-    event_time DateTime64(3) MATERIALIZED timestamp
+    old_data String
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(event_time)
 ORDER BY (product_id, event_time, event_type)
-TTL event_time + INTERVAL 30 DAY
+TTL event_time + INTERVAL 30 DAY;
 
 -- Create table for order analytics
 CREATE TABLE IF NOT EXISTS order_events (
@@ -52,14 +50,13 @@ CREATE TABLE IF NOT EXISTS order_events (
     event_type String,
     table_name String,
     operation String,
-    timestamp DateTime64(3) DEFAULT now64(),
+    event_time DateTime64(3) DEFAULT now64(),
     data String,
-    old_data String,
-    event_time DateTime64(3) MATERIALIZED timestamp
+    old_data String
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMMDD(event_time)
 ORDER BY (order_id, event_time, event_type)
-TTL event_time + INTERVAL 30 DAY
+TTL event_time + INTERVAL 30 DAY;
 
 -- Create aggregated tables for faster queries
 CREATE TABLE IF NOT EXISTS user_activity_summary (

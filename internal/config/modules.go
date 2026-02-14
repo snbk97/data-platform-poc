@@ -22,8 +22,13 @@ type PostgreSQLModule struct {
 
 // MySQLModule contains MySQL-specific module configuration
 type MySQLModule struct {
-	Enabled bool     `yaml:"enabled"`
-	Tables  []string `yaml:"tables"`
+	Enabled  bool     `yaml:"enabled"`
+	Host     string   `yaml:"host"`
+	Port     int      `yaml:"port"`
+	User     string   `yaml:"user"`
+	Password string   `yaml:"password"`
+	Database string   `yaml:"database"`
+	Tables   []string `yaml:"tables"`
 }
 
 // MinIOModule contains MinIO-specific module configuration

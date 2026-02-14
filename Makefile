@@ -78,8 +78,8 @@ core-pg:
 
 core-mysql:
 	# need to add mysql to docker file
-	# @echo "Starting important services"
-	# docker-compose up -d kafka clickhouse zookeeper mysql debezium kafka-ui
+	@echo "Starting important services"
+	docker-compose up -d kafka clickhouse zookeeper mysql debezium kafka-ui
 
 up:
 	@echo "Starting all services..."

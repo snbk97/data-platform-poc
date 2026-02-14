@@ -14,6 +14,7 @@ type Config struct {
 	Server     ServerConfig     `yaml:"server"`
 	Kafka      KafkaConfig      `yaml:"kafka"`
 	Database   DatabaseConfig   `yaml:"database"`
+	MySQL      MySQLConfig      `yaml:"mysql"`
 	ClickHouse ClickHouseConfig `yaml:"clickhouse"`
 	Redis      RedisConfig      `yaml:"redis"`
 	MinIO      MinIOConfig      `yaml:"minio"`
@@ -66,6 +67,20 @@ type DatabaseConfig struct {
 	SSLMode      string `yaml:"ssl_mode"`
 	MaxOpenConns int    `yaml:"max_open_conns"`
 	MaxIdleConns int    `yaml:"max_idle_conns"`
+}
+
+// MySQLConfig contains MySQL connection configuration
+type MySQLConfig struct {
+	Host            string   `yaml:"host"`
+	Port            int      `yaml:"port"`
+	User            string   `yaml:"user"`
+	Password        string   `yaml:"password"`
+	Database        string   `yaml:"database"`
+	ServerID        int      `yaml:"server_id"`
+	GTIDMode        bool     `yaml:"gtid_mode"`
+	DDLHandlingMode string   `yaml:"ddl_handling_mode"`
+	IncludeSchemas  []string `yaml:"include_schemas"`
+	IncludeTables   []string `yaml:"include_tables"`
 }
 
 // ClickHouseConfig contains ClickHouse connection configuration

@@ -16,6 +16,11 @@ services:
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Kafka for event streaming
   kafka:
@@ -23,7 +28,8 @@ services:
     hostname: kafka
     container_name: db-stream-kafka
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
       - "9101:9101"
@@ -39,26 +45,43 @@ services:
       KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: localhost
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_HEAP_OPTS: "-Xms256M -Xmx512M"
     networks:
       - db-stream-network
     volumes:
       - kafka-data:/var/lib/kafka/data
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/bin/kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
 
   # ClickHouse for analytics
   clickhouse:
     image: clickhouse/clickhouse-server:23.8
     hostname: clickhouse
     container_name: db-stream-clickhouse
+    depends_on:
+      zookeeper:
+        condition: service_healthy
     ports:
       - "8123:8123"
       - "9000:9000"
+    env_file:
+      - .env
     environment:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      # AWS credentials for S3Queue/S3 (from .env; not committed)
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
     networks:
       - db-stream-network
     volumes:
       - clickhouse-data:/var/lib/clickhouse
       - ./scripts/clickhouse-init.sql:/docker-entrypoint-initdb.d/clickhouse-init.sql
+      - ./clickhouse/config.d/zookeeper.xml:/etc/clickhouse-server/config.d/zookeeper.xml:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
       interval: 30s
@@ -87,14 +110,41 @@ services:
       timeout: 10s
       retries: 3
 
+  # MySQL for CDC source (using MariaDB for lower memory footprint)
+  mysql:
+    image: mariadb:10.11
+    hostname: mysql
+    container_name: db-stream-mysql
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: db_stream_source
+      MYSQL_USER: db_stream
+      MYSQL_PASSWORD: db_stream_password
+    networks:
+      - db-stream-network
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./scripts/mysql-init.sql:/docker-entrypoint-initdb.d/mysql-init.sql
+    command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   # Debezium Connector for CDC
   debezium:
     image: debezium/connect:2.4
     hostname: debezium
     container_name: db-stream-debezium
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
     ports:
       - "8083:8083"
     environment:
@@ -105,8 +155,8 @@ services:
       STATUS_STORAGE_TOPIC: connect_statuses
       KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      # Reduce memory usage to prevent OOM kills (Exit 137)
-      HEAP_OPTS: "-Xms512M -Xmx1G"
+      HEAP_OPTS: "-Xms128M -Xmx256M"
+    mem_limit: 512m
     networks:
       - db-stream-network
 
@@ -226,6 +276,8 @@ volumes:
   clickhouse-data:
     driver: local
   postgres-data:
+    driver: local
+  mysql-data:
     driver: local
   redis-data:
     driver: local
