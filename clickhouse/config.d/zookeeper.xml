@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!-- Required for S3Queue engine (coordination of processed files). -->
+    <!-- Uses the same ZooKeeper as Kafka; ClickHouse uses its own paths. -->
+    <zookeeper>
+        <node>
+            <host>zookeeper</host>
+            <port>2181</port>
+        </node>
+    </zookeeper>
+</clickhouse>

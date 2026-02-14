@@ -5,6 +5,7 @@ go 1.24.1
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.43.0
 	github.com/gin-gonic/gin v1.9.1
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/segmentio/kafka-go v0.4.50
 	github.com/spf13/viper v1.17.0
@@ -13,6 +14,7 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/ClickHouse/ch-go v0.71.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/bytedance/sonic v1.9.1 // indirect
