@@ -1,4 +1,4 @@
-PHONY: help build dev test test-single test-coverage lint fmt up down logs clean dashboard
+PHONY: help build dev test test-single test-coverage lint fmt up down logs clean dashboard sanity sanity-full
 
 # Default target
 help:
@@ -15,6 +15,8 @@ help:
 	@echo "  logs          - Show logs for all services"
 	@echo "  clean         - Clean build artifacts and containers"
 	@echo "  dashboard     - Open the web UI dashboard"
+	@echo "  sanity        - Run quick sanity checks (no infra required)"
+	@echo "  sanity-full   - Run full sanity checks (requires infra running)"
 
 # Build targets
 build:
@@ -54,6 +56,15 @@ test-coverage:
 	go test -v -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "✓ Coverage report generated: coverage.html"
+
+# Sanity test targets
+sanity:
+	@echo "Running sanity checks (no infra required)..."
+	go test -v -short ./sanity/...
+
+sanity-full:
+	@echo "Running full sanity checks (requires infra running)..."
+	go test -v ./sanity/...
 
 # Code quality targets
 lint:
