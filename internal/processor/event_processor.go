@@ -137,12 +137,132 @@ func (p *EventProcessor) Start(ctx context.Context) error {
 		default:
 			if err := p.processDDLMessage(ctx); err != nil {
 				if ctx.Err() != nil {
-					return
+					return ctx.Err()
 				}
 				p.logger.Error("Error processing DDL message", zap.Error(err))
 			}
 		}
 	}
+}
+
+// ddlFlushLoop periodically flushes the DDL batch
+func (p *EventProcessor) ddlFlushLoop(ctx context.Context) {
+	ticker := time.NewTicker(p.flushInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			p.mu.Lock()
+			if len(p.ddlBuffer) > 0 {
+				if err := p.flushDDLBatchUnsafe(ctx); err != nil {
+					p.logger.Error("Error flushing DDL batch", zap.Error(err))
+				}
+			}
+			p.mu.Unlock()
+		}
+	}
+}
+
+// processDDLMessage processes a single DDL message from Kafka
+func (p *EventProcessor) processDDLMessage(ctx context.Context) error {
+	msg, err := p.ddlReader.FetchMessage(ctx)
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded || ctx.Err() == context.Canceled {
+			return nil
+		}
+		return fmt.Errorf("failed to fetch DDL message: %w", err)
+	}
+
+	p.logger.Info("Received DDL message",
+		zap.Int64("offset", msg.Offset),
+		zap.ByteString("value", msg.Value[:min(200, len(msg.Value))]),
+		zap.String("topic", msg.Topic),
+	)
+
+	var ddlEvent DDLEvent
+	if err := json.Unmarshal(msg.Value, &ddlEvent); err != nil {
+		p.logger.Warn("Could not parse DDL message", zap.Error(err))
+	} else {
+		p.mu.Lock()
+		p.ddlBuffer = append(p.ddlBuffer, &ddlEvent)
+		shouldFlush := len(p.ddlBuffer) >= p.batchSize
+		p.mu.Unlock()
+
+		if shouldFlush {
+			if err := p.flushDDLBatch(ctx); err != nil {
+				p.logger.Error("Error flushing DDL batch", zap.Error(err))
+			}
+		}
+	}
+
+	if err := p.ddlReader.CommitMessages(ctx, msg); err != nil {
+		p.logger.Warn("Error committing DDL message", zap.Error(err))
+	}
+
+	return nil
+}
+
+// flushDDLBatch flushes the current DDL batch to ClickHouse
+func (p *EventProcessor) flushDDLBatch(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.flushDDLBatchUnsafe(ctx)
+}
+
+// flushDDLBatchUnsafe flushes DDL batch without acquiring mutex
+func (p *EventProcessor) flushDDLBatchUnsafe(ctx context.Context) error {
+	if len(p.ddlBuffer) == 0 {
+		return nil
+	}
+
+	start := time.Now()
+	defer func() {
+		p.logger.Debug("DDL Batch processed",
+			zap.Int("size", len(p.ddlBuffer)),
+			zap.Duration("duration", time.Since(start)))
+	}()
+
+	if err := p.storeDDLBatchInClickHouse(ctx, p.ddlBuffer); err != nil {
+		return fmt.Errorf("failed to store DDL batch in ClickHouse: %w", err)
+	}
+
+	p.ddlBuffer = p.ddlBuffer[:0]
+
+	return nil
+}
+
+// storeDDLBatchInClickHouse stores a batch of DDL events in ClickHouse
+func (p *EventProcessor) storeDDLBatchInClickHouse(ctx context.Context, events []*DDLEvent) error {
+	batch, err := p.clickhouseConn.PrepareBatch(ctx, `
+		INSERT INTO ddl_events (
+			id, event_type, schema_name, table_name, ddl_statement, executed_at
+		) VALUES (?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare DDL batch: %w", err)
+	}
+
+	for _, event := range events {
+		if err := batch.Append(
+			event.ID,
+			event.EventType,
+			event.SchemaName,
+			event.TableName,
+			event.DDLStatement,
+			event.ExecutedAt,
+		); err != nil {
+			return fmt.Errorf("failed to append DDL event to batch: %w", err)
+		}
+	}
+
+	if err := batch.Send(); err != nil {
+		return fmt.Errorf("failed to send DDL batch: %w", err)
+	}
+
+	return nil
 }
 
 // Shutdown gracefully stops the event processor

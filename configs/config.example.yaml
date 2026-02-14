@@ -18,6 +18,7 @@ kafka:
   group_id: "db-stream-group"
   topics:
     cdc: "db-stream.cdc.events"
+    ddl: "db-stream.ddl.events"
     processed: "db-stream.processed.events"
     dead_letter: "db-stream.dead-letter.events"
   batch_size: 100
