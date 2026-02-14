@@ -8,7 +8,6 @@ import (
 type ModulesConfig struct {
 	PostgreSQL *PostgreSQLModule `yaml:"postgresql"`
 	MySQL      *MySQLModule      `yaml:"mysql"`
-	MinIO      *MinIOModule      `yaml:"minio"`
 	S3         *S3Module         `yaml:"s3"`
 	API        *APIModule        `yaml:"api"`
 	Processor  *ProcessorModule  `yaml:"processor"`
@@ -29,12 +28,6 @@ type MySQLModule struct {
 	Password string   `yaml:"password"`
 	Database string   `yaml:"database"`
 	Tables   []string `yaml:"tables"`
-}
-
-// MinIOModule contains MinIO-specific module configuration
-type MinIOModule struct {
-	Enabled bool     `yaml:"enabled"`
-	Buckets []string `yaml:"buckets"`
 }
 
 // S3Module contains S3-specific module configuration
@@ -73,10 +66,6 @@ func (c *Config) GetEnabledModules() []string {
 		enabledModules = append(enabledModules, "mysql")
 	}
 
-	if c.Modules.MinIO != nil && c.Modules.MinIO.Enabled {
-		enabledModules = append(enabledModules, "minio")
-	}
-
 	if c.Modules.S3 != nil && c.Modules.S3.Enabled {
 		enabledModules = append(enabledModules, "s3")
 	}
@@ -103,8 +92,6 @@ func (c *Config) IsModuleEnabled(moduleName string) bool {
 		return c.Modules.PostgreSQL != nil && c.Modules.PostgreSQL.Enabled
 	case "mysql":
 		return c.Modules.MySQL != nil && c.Modules.MySQL.Enabled
-	case "minio":
-		return c.Modules.MinIO != nil && c.Modules.MinIO.Enabled
 	case "s3":
 		return c.Modules.S3 != nil && c.Modules.S3.Enabled
 	case "api":
@@ -133,13 +120,6 @@ func (c *Config) ValidateModules() error {
 	if c.Modules.MySQL != nil && c.Modules.MySQL.Enabled {
 		if len(c.Modules.MySQL.Tables) == 0 {
 			return fmt.Errorf("mysql module enabled but no tables specified")
-		}
-	}
-
-	// Validate MinIO module
-	if c.Modules.MinIO != nil && c.Modules.MinIO.Enabled {
-		if len(c.Modules.MinIO.Buckets) == 0 {
-			return fmt.Errorf("minio module enabled but no buckets specified")
 		}
 	}
 

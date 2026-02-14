@@ -17,7 +17,6 @@ type Config struct {
 	MySQL      MySQLConfig      `yaml:"mysql"`
 	ClickHouse ClickHouseConfig `yaml:"clickhouse"`
 	Redis      RedisConfig      `yaml:"redis"`
-	MinIO      MinIOConfig      `yaml:"minio"`
 	Spark      SparkConfig      `yaml:"spark"`
 	Modules    *ModulesConfig   `yaml:"modules"`
 	Logging    LoggingConfig    `yaml:"logging"`
@@ -100,15 +99,6 @@ type RedisConfig struct {
 	Port     int    `yaml:"port"`
 	Password string `yaml:"password"`
 	Database int    `yaml:"database"`
-}
-
-// MinIOConfig contains MinIO connection configuration
-type MinIOConfig struct {
-	Endpoint  string `yaml:"endpoint"`
-	AccessKey string `yaml:"access_key"`
-	SecretKey string `yaml:"secret_key"`
-	UseSSL    bool   `yaml:"use_ssl"`
-	Bucket    string `yaml:"bucket"`
 }
 
 // SparkConfig contains Spark connection configuration
@@ -207,17 +197,6 @@ func overrideWithEnv(cfg *Config) {
 	}
 	if redisPassword := os.Getenv("REDIS_PASSWORD"); redisPassword != "" {
 		cfg.Redis.Password = redisPassword
-	}
-
-	// MinIO configuration
-	if endpoint := os.Getenv("MINIO_ENDPOINT"); endpoint != "" {
-		cfg.MinIO.Endpoint = endpoint
-	}
-	if accessKey := os.Getenv("MINIO_ACCESS_KEY"); accessKey != "" {
-		cfg.MinIO.AccessKey = accessKey
-	}
-	if secretKey := os.Getenv("MINIO_SECRET_KEY"); secretKey != "" {
-		cfg.MinIO.SecretKey = secretKey
 	}
 
 	// Logging configuration
